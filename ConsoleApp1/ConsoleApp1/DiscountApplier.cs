@@ -6,16 +6,6 @@ using System.Threading.Tasks;
 
 public class DiscountApplier
 {
-    private interface IDiscountStrategy
-    {
-        dynamic Apply(List<dynamic> cart, string discountCode, dynamic userContext, Func<dynamic, bool> itemSelector);
-    }
-
-    private abstract class DiscountStrategyBase : IDiscountStrategy
-    {
-        public abstract dynamic Apply(List<dynamic> cart, string discountCode, dynamic userContext, Func<dynamic, bool> itemSelector);
-    }
-
     private sealed record DiscountRule(double discountRate, double minimumAmount, double maximumAmount, string[] categories, bool isExclusive, bool isStackable, int requiredUserLevel);
 
     private static readonly Dictionary<string, DiscountRule> DiscountRules = new()
@@ -26,113 +16,79 @@ public class DiscountApplier
         ["VIP50"] = new DiscountRule(0.5, 200.0, 999999.0, Array.Empty<string>(), true, false, 3)
     };
 
-    private static readonly Dictionary<bool, IDiscountStrategy> DiscountStrategyMap = new()
+    public class CartItem
     {
-        [true] = new StackableDiscountStrategy(),
-        [false] = new ExclusiveDiscountStrategy()
-    };
-
-    private static double CalculateLineAmount(dynamic cartItem) => Convert.ToDouble(cartItem.p) * Convert.ToDouble(cartItem.q);
-
-    private static double CalculateCartTotal(IEnumerable<dynamic> cartItems) => cartItems.Aggregate(0.0, (total, item) => total + CalculateLineAmount(item));
-
-    private static IEnumerable<dynamic> SelectItemsForRule(List<dynamic> cart, DiscountRule rule) =>
-        cart.Where(item => rule.categories.Length == 0 || rule.categories.Contains((string)item.cat));
-
-    private static Func<dynamic, bool> ItemSelector(DiscountRule rule) => item => rule.categories.Length == 0 || rule.categories.Contains((string)item.cat);
-
-    private static readonly Func<List<dynamic>, string, dynamic, dynamic> DiscountProcessor = (cart, discountCode, userContext) =>
-    {
-        var eventHandler = new EventHandler((_, __) => { });
-        var thread = new Thread(() => { });
-        var syncContext = SynchronizationContext.Current;
-        var rule = DiscountRules.ContainsKey(discountCode) ? DiscountRules[discountCode] : null;
-        var userHistory = ((IEnumerable<string>)userContext.hist) ?? Array.Empty<string>();
-        var userLevel = (int)userContext.lvl;
-        var errorMessage = rule == null ? "Invalid code"
-            : userLevel < rule.requiredUserLevel ? "Insufficient level"
-            : !rule.isStackable && userHistory.Contains(discountCode) ? "Already used"
-            : null;
-        if (errorMessage != null)
-            return new { success = false, msg = errorMessage, amt = 0.0, final = CalculateCartTotal(cart) };
-        var applicableItems = SelectItemsForRule(cart, rule).ToList();
-        var applicableTotal = CalculateCartTotal(applicableItems);
-        var cartTotal = CalculateCartTotal(cart);
-        var validationMessage = applicableTotal < rule.minimumAmount ? "Minimum not met"
-            : applicableTotal > rule.maximumAmount ? "Maximum exceeded"
-            : null;
-        if (validationMessage != null)
-            return new { success = false, msg = validationMessage, amt = 0.0, final = cartTotal };
-        return DiscountStrategyMap[rule.isStackable].Apply(cart, discountCode, userContext, ItemSelector(rule));
-    };
-
-    public static dynamic ProcessDiscountValidation(List<dynamic> cart, string discountCode, dynamic userContext)
-    {
-        return DiscountProcessor(cart, discountCode, userContext);
+        public double Price { get; set; }
+        public int Quantity { get; set; }
+        public string Category { get; set; } = string.Empty;
     }
 
-    private class ExclusiveDiscountStrategy : DiscountStrategyBase
+    public class UserContext
     {
-        public override dynamic Apply(List<dynamic> cart, string discountCode, dynamic userContext, Func<dynamic, bool> itemSelector)
+        public int Level { get; set; }
+        public IEnumerable<string> History { get; set; } = Array.Empty<string>();
+    }
+
+    private static double LineAmount(CartItem item) => item.Price * item.Quantity;
+    private static double CartTotal(IEnumerable<CartItem> items) => items.Sum(LineAmount);
+
+    private static IEnumerable<CartItem> GetApplicableItems(List<CartItem> cart, DiscountRule rule) =>
+        cart.Where(item => rule.categories.Length == 0 || rule.categories.Contains(item.Category));
+
+    private static double CalculateStackedDiscount(List<CartItem> cart, string[] previousCodes)
+    {
+        double total = 0.0;
+        foreach (var code in previousCodes)
         {
-            var rule = DiscountRules[discountCode];
-            var applicableItems = cart.Where(itemSelector).ToList();
-            var applicableTotal = CalculateCartTotal(applicableItems);
+            var rule = DiscountRules[code];
+            var applicableAmount = GetApplicableItems(cart, rule).Sum(LineAmount);
+            total += applicableAmount * rule.discountRate;
+        }
+        return total;
+    }
+
+    public static dynamic ProcessDiscountValidation(List<CartItem> cart, string discountCode, UserContext userContext)
+    {
+        if (!DiscountRules.ContainsKey(discountCode))
+            return new { success = false, msg = "Invalid code", amt = 0.0, final = CartTotal(cart) };
+
+        var rule = DiscountRules[discountCode];
+        var userLevel = userContext.Level;
+        var userHistory = userContext.History ?? Array.Empty<string>();
+
+        if (userLevel < rule.requiredUserLevel)
+            return new { success = false, msg = "Insufficient level", amt = 0.0, final = CartTotal(cart) };
+
+        if (!rule.isStackable && userHistory.Contains(discountCode))
+            return new { success = false, msg = "Already used", amt = 0.0, final = CartTotal(cart) };
+
+        var applicableTotal = GetApplicableItems(cart, rule).Sum(LineAmount);
+        var cartTotal = CartTotal(cart);
+
+        if (applicableTotal < rule.minimumAmount)
+            return new { success = false, msg = "Minimum not met", amt = 0.0, final = cartTotal };
+
+        if (applicableTotal > rule.maximumAmount)
+            return new { success = false, msg = "Maximum exceeded", amt = 0.0, final = cartTotal };
+
+        if (rule.isExclusive)
+        {
             var rawDiscount = applicableTotal * rule.discountRate;
             var discountAmount = Math.Min(rawDiscount, rule.maximumAmount);
-            var cartTotal = CalculateCartTotal(cart);
-            var resultBuilder = new DiscountResultBuilder()
-                .With("success", true)
-                .With("msg", "Applied")
-                .With("amt", discountAmount)
-                .With("final", cartTotal - discountAmount);
-            return resultBuilder.Build();
+            return new { success = true, msg = "Applied", amt = discountAmount, final = cartTotal - discountAmount };
         }
-    }
 
-    private class StackableDiscountStrategy : DiscountStrategyBase
-    {
-        public override dynamic Apply(List<dynamic> cart, string discountCode, dynamic userContext, Func<dynamic, bool> itemSelector)
-        {
-            var userHistory = ((IEnumerable<string>)userContext.hist) ?? Array.Empty<string>();
-            var previousStackableCodes = userHistory.Where(code => DiscountRules.ContainsKey(code) && DiscountRules[code].isStackable && code != discountCode).ToArray();
-            var rule = DiscountRules[discountCode];
-            var baseAmount = cart.Where(itemSelector).Sum(CalculateLineAmount);
-            var stackedDiscount = previousStackableCodes.Select(previousCode =>
-            {
-                var previousRule = DiscountRules[previousCode];
-                var applicableAmount = cart.Where(ItemSelector(previousRule)).Sum(CalculateLineAmount);
-                return applicableAmount * previousRule.discountRate;
-            }).Aggregate(0.0, (total, discount) => total + discount);
-            var newDiscount = Math.Max(0.0, (baseAmount - stackedDiscount)) * rule.discountRate;
-            var remainingCap = Math.Max(0.0, rule.maximumAmount - stackedDiscount);
-            var totalDiscountToApplyNow = Math.Min(newDiscount, remainingCap);
-            var cartTotal = CalculateCartTotal(cart);
-            var resultBuilder = totalDiscountToApplyNow <= 0.0
-                ? new DiscountResultBuilder()
-                    .With("success", false)
-                    .With("msg", "No additional discount")
-                    .With("amt", 0.0)
-                    .With("final", cartTotal)
-                : new DiscountResultBuilder()
-                    .With("success", true)
-                    .With("msg", "Stacked applied")
-                    .With("amt", totalDiscountToApplyNow)
-                    .With("final", cartTotal - stackedDiscount - totalDiscountToApplyNow);
-            return resultBuilder.Build();
-        }
-    }
+        // Stackable logic
+        var previousStackableCodes = userHistory.Where(code => DiscountRules.ContainsKey(code) && DiscountRules[code].isStackable && code != discountCode).ToArray();
+        var baseAmount = GetApplicableItems(cart, rule).Sum(LineAmount);
+        var stackedDiscount = CalculateStackedDiscount(cart, previousStackableCodes);
+        var newDiscount = Math.Max(0.0, (baseAmount - stackedDiscount)) * rule.discountRate;
+        var remainingCap = Math.Max(0.0, rule.maximumAmount - stackedDiscount);
+        var totalDiscountToApplyNow = Math.Min(newDiscount, remainingCap);
 
-    private class DiscountResultBuilder
-    {
-        private readonly Dictionary<string, object> resultData = new();
-        public DiscountResultBuilder With(string key, object value) { resultData[key] = value; return this; }
-        public dynamic Build() => new
-        {
-            success = resultData["success"],
-            msg = resultData["msg"],
-            amt = resultData["amt"],
-            final = resultData["final"]
-        };
+        if (totalDiscountToApplyNow <= 0.0)
+            return new { success = false, msg = "No additional discount", amt = 0.0, final = cartTotal };
+
+        return new { success = true, msg = "Stacked applied", amt = totalDiscountToApplyNow, final = cartTotal - stackedDiscount - totalDiscountToApplyNow };
     }
 }
