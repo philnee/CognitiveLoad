@@ -3,6 +3,21 @@ using System.IO;
 
 namespace TemporalDecompositionExample
 {
+    public class Example
+    {
+        public void ProcessFile(string path)
+        {
+            var processor = new FileProcessor();
+            processor.Open(path);
+            string line;
+            while ((line = processor.ReadLine()) != null)
+            {
+                Console.WriteLine(line);
+            }
+            processor.Close();
+        }
+    }
+
     public class FileProcessor
     {
         private FileStream _stream;
@@ -32,21 +47,6 @@ namespace TemporalDecompositionExample
             _reader.Close();
             _stream.Close();
             _isClosed = true;
-        }
-    }
-
-    public class Example
-    {
-        public void ProcessFile(string path)
-        {
-            var processor = new FileProcessor();
-            processor.Open(path);
-            string line;
-            while ((line = processor.ReadLine()) != null)
-            {
-                Console.WriteLine(line);
-            }
-            processor.Close();
         }
     }
 }

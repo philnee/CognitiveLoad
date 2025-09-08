@@ -4,8 +4,6 @@ using System.Linq;
 
 namespace DeepModuleExample
 {
-    // A deep module: encapsulates a concept (statistics on a list of ints),
-    // hides implementation, and provides a simple, powerful interface.
     public class StatisticsList
     {
         private readonly List<int> _data = new List<int>();

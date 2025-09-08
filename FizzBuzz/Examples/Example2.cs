@@ -9,14 +9,11 @@
         runner.Run(1, 100);
     }
 }
-// Abstracts the output mechanism
 
 public interface IOutputStrategy<T>
 {
     void Output(T value);
 }
-
-// Console output implementation
 
 public class ConsoleOutputStrategy : IOutputStrategy<string>
 {
@@ -26,14 +23,10 @@ public class ConsoleOutputStrategy : IOutputStrategy<string>
     }
 }
 
-// FizzBuzz rule interface
-
 public interface IFizzBuzzRule
 {
     string Apply(int number, Func<int, string> next);
 }
-
-// Fizz rule
 
 public class FizzRule : IFizzBuzzRule
 {
@@ -45,8 +38,6 @@ public class FizzRule : IFizzBuzzRule
     }
 }
 
-// Buzz rule
-
 public class BuzzRule : IFizzBuzzRule
 {
     public string Apply(int number, Func<int, string> next)
@@ -57,8 +48,6 @@ public class BuzzRule : IFizzBuzzRule
     }
 }
 
-// Number fallback rule
-
 public class NumberRule : IFizzBuzzRule
 {
     public string Apply(int number, Func<int, string> next)
@@ -68,13 +57,10 @@ public class NumberRule : IFizzBuzzRule
     }
 }
 
-// Rule chain factory
-
 public static class FizzBuzzRuleFactory
 {
     public static IFizzBuzzRule CreateRuleChain()
     {
-        // Compose rules in reverse order for chain of responsibility
         return new FizzRuleDecorator(
             new BuzzRuleDecorator(
                 new NumberRuleDecorator(null)
@@ -82,8 +68,6 @@ public static class FizzBuzzRuleFactory
         );
     }
 }
-
-// Decorator base for rules
 
 public abstract class RuleDecoratorBase : IFizzBuzzRule
 {
@@ -133,8 +117,6 @@ public class NumberRuleDecorator : RuleDecoratorBase
     }
 }
 
-// Event-based publisher for output
-
 public class FizzBuzzPublisher<T>
 {
     public event Action<T> OnOutput;
@@ -144,8 +126,6 @@ public class FizzBuzzPublisher<T>
         OnOutput?.Invoke(value);
     }
 }
-
-// The main orchestrator
 
 public class FizzBuzzRunner
 {
@@ -171,5 +151,3 @@ public class FizzBuzzRunner
         }
     }
 }
-
-// Entry point

@@ -13,15 +13,11 @@ namespace ShallowServiceExample
         public IEnumerable<User> GetAll() => _repo.GetAll();
     }
 
-    // Entity
-
     public class User
     {
         public int Id { get; set; }
         public string Name { get; set; }
     }
-
-    // Repository interface
 
     public interface IUserRepository
     {
@@ -30,8 +26,6 @@ namespace ShallowServiceExample
         void Remove(int id);
         IEnumerable<User> GetAll();
     }
-
-    // Concrete repository
 
     public class UserRepository : IUserRepository
     {
