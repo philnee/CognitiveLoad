@@ -1,5 +1,0 @@
-{
-    "dotnet.defaultSolution": "ConsoleApp1.sln",
-    "dotnet.unitTests.runSettingsPath": "",
-    "csharp.semanticHighlighting.enabled": true
-}
